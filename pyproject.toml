@@ -1,0 +1,53 @@
+[project]
+name = "quant-shell"
+version = "0.4.0"
+description = "Independent A-share quant framework — fixed pipeline, pluggable strategy/factors"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["quant", "trading", "a-share", "backtest", "plugin"]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "akshare>=1.12",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+# 示例策略（非 alpha 承诺）；发布到 PyPI 后可用 pip install quant-shell[reference]
+# 本地开发请同时: pip install -e ./packages/quant-shell-reference
+reference = ["quant-shell-reference>=0.4.0,<0.5"]
+desk = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "httpx>=0.27"]
+dev = [
+    "pytest>=7.0",
+    "quant-shell-reference>=0.4.0,<0.5",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
+]
+intel = []
+pdf = ["reportlab>=4.0"]
+
+[project.scripts]
+quant-shell = "quant_shell.cli:main"
+quant-shell-desk = "quant_shell.desk.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/goawtdg/quant-shell"
+Documentation = "https://github.com/goawtdg/quant-shell/blob/main/README.md"
+Issues = "https://github.com/goawtdg/quant-shell/issues"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["quant_shell*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# reference 包路径：未 pip install -e 时仍可跑带示例的测试
+pythonpath = ["src", "packages/quant-shell-reference/src", "examples"]

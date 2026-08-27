@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  值层来源：design-taste-frontend / refero-styles/Ventriloc（tokens.json 1:1）
+  暖纸数据天文台：纸白画布、暖灰表面、无阴影、余烬橙只做功能标点。
+  dark 伴侣按同一规则推演（暖炭黑画布，同一枚余烬橙）。
+  形状规则：按钮/输入 0px，卡片 8px，徽标 3px，药丸 full。
+*/
+
+:root {
+  --background: 0 0% 96%; /* Fog #f5f5f5 */
+  --foreground: 0 0% 13%; /* Graphite #202020 */
+  --card: 0 0% 100%; /* Canvas White #ffffff */
+  --card-foreground: 0 0% 13%;
+  --muted: 0 0% 94%; /* Ash #efefef */
+  --muted-foreground: 0 0% 30%; /* Steel #4d4d4d */
+  --border: 0 0% 91%; /* Mist #e8e8e8 */
+  --primary: 0 0% 13%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 0 0% 94%;
+  --accent-foreground: 0 0% 13%;
+  --ember: 18 100% 58%; /* Ember Orange #ff682c */
+  --brass: 44 52% 33%; /* Brass #816729 */
+  --ivory: 40 24% 89%; /* Ivory #ebe6dd */
+  --subtle: 0 0% 51%; /* Slate #828282 */
+  color-scheme: light;
+}
+
+.dark {
+  --background: 24 5% 7%;
+  --foreground: 40 12% 90%;
+  --card: 24 5% 10%;
+  --card-foreground: 40 12% 90%;
+  --muted: 24 4% 15%;
+  --muted-foreground: 36 7% 64%;
+  --border: 24 4% 21%;
+  --primary: 40 12% 90%;
+  --primary-foreground: 24 5% 8%;
+  --accent: 24 4% 15%;
+  --accent-foreground: 40 12% 90%;
+  --ember: 18 100% 58%;
+  --brass: 43 45% 55%;
+  --ivory: 36 10% 20%;
+  --subtle: 36 5% 50%;
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+::selection {
+  background: hsl(var(--ember) / 0.22);
+}
+
+input[type="checkbox"],
+input[type="range"] {
+  accent-color: hsl(var(--foreground));
+}

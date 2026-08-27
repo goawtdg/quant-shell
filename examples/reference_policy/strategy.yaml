@@ -1,0 +1,12 @@
+name: reference_policy
+version: "1"
+description: 与 quant-system StrategyPolicyEngine 等价的 reference 策略（阈值来自 settings / .env）
+
+thresholds:
+  signal_threshold_moderate: 0.07
+  signal_threshold_strong: 0.10
+  signal_moderate_buy_scale: 0.5
+
+risk:
+  portfolio_max_drawdown: 0.15
+  single_stock_limit: 0.10

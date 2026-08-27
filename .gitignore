@@ -1,0 +1,46 @@
+# 密钥 — 只提交 .env.example
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# 运行时产出（报告 / 模拟盘 / 因子状态 / 审计）— 不进开源仓
+# 必须用根路径：勿写成 data/，否则会误伤 src/quant_shell/data/
+/data/
+
+# 决策台前端
+web/node_modules/
+web/.next/
+web/out/
+web/.env
+web/.env.*
+!web/.env.example
+
+# 本地 IDE / 工具缓存
+.idea/
+.vscode/
+.qoder/
+.cursor/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 日志
+*.log

@@ -1,0 +1,12 @@
+name: minimal_custom
+version: "1"
+description: 演示仅改门槛的自定义策略（仍使用 reference 政策栈）
+
+thresholds:
+  signal_threshold_moderate: 0.08
+  signal_threshold_strong: 0.11
+  signal_moderate_buy_scale: 0.5
+
+risk:
+  portfolio_max_drawdown: 0.15
+  single_stock_limit: 0.08
