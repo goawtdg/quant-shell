@@ -12,6 +12,7 @@ from quant_shell.common.retry import call_with_retry
 from quant_shell.config.settings import settings
 from quant_shell.data import akshare_client
 from quant_shell.data.akshare_client import EtfSpotRow
+from quant_shell.data.disk_cache import CACHE_ROOT, load_frame_ttl, save_frame_ttl
 from quant_shell.data.stock_client import fetch_stock_spot_quote
 from quant_shell.data.symbol import is_etf
 
@@ -48,16 +49,47 @@ def clear_live_spot_cache() -> None:
         _etf_batch_mono = 0.0
 
 
-def _ensure_etf_batch(force_refresh: bool | None) -> pd.DataFrame:
+def _etf_spot_disk():
+    return CACHE_ROOT / "etf_spot.pkl"
+
+
+def _remember_etf_batch(frame: pd.DataFrame) -> pd.DataFrame:
     global _etf_batch, _etf_batch_mono
+    _etf_batch = frame
+    _etf_batch_mono = time.monotonic()
+    return frame
+
+
+def _ensure_etf_batch(force_refresh: bool | None) -> pd.DataFrame:
     with _lock:
         if not _need_etf_refresh(force_refresh) and _etf_batch is not None:
             return _etf_batch
-        frame = akshare_client.fetch_etf_spot_batch()
-        _etf_batch = frame
-        _etf_batch_mono = time.monotonic()
+        disk_path = _etf_spot_disk()
+        if force_refresh is not True:
+            fresh = load_frame_ttl(disk_path, _ttl_sec())
+            if fresh is not None:
+                logger.info("live_spot_cache disk_fresh scope=etf rows=%d", len(fresh))
+                return _remember_etf_batch(fresh)
+        try:
+            frame = akshare_client.fetch_etf_spot_batch()
+        except (DataFetchError, OSError) as exc:
+            stale = load_frame_ttl(disk_path, _ttl_sec(), allow_stale=True)
+            if stale is None:
+                raise
+            logger.warning(
+                "live_spot_cache disk_stale scope=etf rows=%d err=%s",
+                len(stale),
+                exc,
+            )
+            return _remember_etf_batch(stale)
+        save_frame_ttl(disk_path, frame)
         logger.info("live_spot_cache refreshed scope=etf rows=%d", len(frame))
-        return frame
+        return _remember_etf_batch(frame)
+
+
+def etf_spot_frame(*, force_refresh: bool | None = None) -> pd.DataFrame:
+    """ETF 现货全表。新鲜磁盘样本优先；拉取失败时回放上一份。"""
+    return _ensure_etf_batch(force_refresh)
 
 
 def refresh_live_spot_caches(*, etfs: bool = True) -> None:
