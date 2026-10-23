@@ -11,7 +11,8 @@ from quant_shell.common import audit
 from quant_shell.common.exceptions import DataFetchError, ValidationError
 from quant_shell.common.logging_config import get_logger
 from quant_shell.config.settings import settings
-from quant_shell.data.akshare_client import fetch_etf_daily_ohlcv, fetch_etf_spot_batch
+from quant_shell.data.akshare_client import fetch_etf_daily_ohlcv
+from quant_shell.data.live_price import etf_spot_frame
 from quant_shell.data.stock_client import fetch_stock_daily_ohlcv
 from quant_shell.data.symbol import ETF_PREFIXES
 from quant_shell.data.universe import fetch_index_constituents
@@ -158,7 +159,7 @@ def load_etf_universe(max_etfs: int = 20) -> list[str]:
         _add(sym.zfill(6))
 
     try:
-        batch = fetch_etf_spot_batch()
+        batch = etf_spot_frame()
         vol_col = "成交量"
         code_col = "代码"
         ranked = batch.sort_values(vol_col, ascending=False)
