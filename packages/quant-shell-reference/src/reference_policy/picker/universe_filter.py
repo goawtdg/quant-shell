@@ -12,7 +12,6 @@ from reference_policy.picker.constants import (
     MAX_RETURN_5D_GATE,
     MIN_MARKET_CAP_YUAN,
     MIN_PE_SANITY,
-    MIN_ROE,
 )
 
 logger = get_logger(__name__)
@@ -36,10 +35,8 @@ def _gate_pass_counts(frame: pd.DataFrame) -> dict[str, int]:
     working = frame.copy()
     counts = {
         "market_cap": int((working["market_cap"] >= MIN_MARKET_CAP_YUAN).sum()),
-        "roe": int((working["roe"] >= MIN_ROE).sum()),
         "pe_positive": int((working["pe"] > MIN_PE_SANITY).sum()),
         "pe_sane": int((working["pe"] <= MAX_PE_SANITY).sum()),
-        "volume": int((working["volume"] > working["volume_ma20"]).sum()),
         "no_board_permission": int(
             working["symbol"].map(_board_permission_ok).astype(bool).sum()
         )
@@ -70,7 +67,7 @@ def apply_universe_gates(frame: pd.DataFrame) -> pd.DataFrame:
     """对基本面 DataFrame 应用硬过滤。
 
     Args:
-        frame: 含 symbol / market_cap / pe / roe / volume / volume_ma20 等。
+        frame: 含 symbol / market_cap / pe / volume 等。ROE 和成交量不参与资格。
 
     Returns:
         过滤后的副本。
@@ -81,10 +78,8 @@ def apply_universe_gates(frame: pd.DataFrame) -> pd.DataFrame:
     working = frame.copy()
     mask = (
         (working["market_cap"] >= MIN_MARKET_CAP_YUAN)
-        & (working["roe"] >= MIN_ROE)
         & (working["pe"] > MIN_PE_SANITY)
         & (working["pe"] <= MAX_PE_SANITY)
-        & (working["volume"] > working["volume_ma20"])
     )
     if "symbol" in working.columns:
         mask &= working["symbol"].map(_board_permission_ok).astype(bool)

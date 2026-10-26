@@ -176,22 +176,12 @@ class StrategyPolicyEngine(StrategyEngine):
         else:
             extra = dict(ctx.market.extra or {})
             extra.setdefault("symbol", ctx.symbol)
-            coverage = pack.factor_coverage
-            active = pack.factor_active_count
-            usable = pack.factor_usable_count
-            if ctx.factor_health is not None:
-                coverage = ctx.factor_health.coverage
-                active = ctx.factor_health.active_count
-                usable = ctx.factor_health.usable_count
             verdict = decide_entry(
                 symbol=ctx.symbol,
                 pe_percentile=ctx.market.pe_percentile,
                 pe_reliable=pe_ok,
                 sentiment_composite=sentiment.composite,
                 signal=ctx.signal,
-                factor_coverage=coverage,
-                factor_active=active,
-                factor_usable=usable,
                 theme_sleeve_exposure=theme_exposure,
                 microstructure_extra=extra,
                 config=self._config,

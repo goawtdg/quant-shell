@@ -408,7 +408,7 @@ class StockFundamentals:
     price: float = 0.0
     market_cap: float = 0.0
     pe: float = 0.0
-    roe: float = 0.0
+    roe: float | None = None
     volume: float = 0.0
     volume_ma20: float = 0.0
     return_3m: float = 0.0

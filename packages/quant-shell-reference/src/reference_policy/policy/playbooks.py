@@ -14,6 +14,9 @@ from reference_policy.constants import (
     MAX_RETURN_5D_ENTRY,
     MAX_RETURN_10D_ENTRY,
 )
+
+# 高估不再改道。同一延续假设下，估值只把仓位打到这个比例。
+_RICH_PE_ENTRY_SCALE = 0.5
 from reference_policy.drawdown_threshold import compute_hold_exit_drawdown_limit
 from reference_policy.policy.config import SleevePolicyConfig
 from reference_policy.policy.router import classify_sleeve, compute_catalyst_ok
@@ -299,9 +302,6 @@ class EntryContext:
     pe_reliable: bool
     sentiment_composite: float
     signal: TradingSignal | None
-    factor_coverage: float
-    factor_active: int
-    factor_usable: int
     theme_sleeve_exposure: float
     microstructure_extra: dict[str, object]
     cross_validation: float
@@ -335,9 +335,6 @@ def decide_entry(
     pe_reliable: bool,
     sentiment_composite: float,
     signal: TradingSignal | None,
-    factor_coverage: float,
-    factor_active: int,
-    factor_usable: int,
     theme_sleeve_exposure: float,
     microstructure_extra: dict[str, object] | None,
     config: SleevePolicyConfig,
@@ -385,9 +382,6 @@ def decide_entry(
         pe_reliable=pe_reliable,
         sentiment_composite=sentiment_composite,
         signal=signal,
-        factor_coverage=factor_coverage,
-        factor_active=factor_active,
-        factor_usable=factor_usable,
         theme_sleeve_exposure=theme_sleeve_exposure,
         microstructure_extra=dict(microstructure_extra or {"symbol": symbol}),
         cross_validation=cross_validation,
@@ -575,10 +569,6 @@ def _finish_entry(ctx: EntryContext, blocks: list[str]) -> PolicyVerdict:
         )
     action, suggested, chain = apply_entry_score(
         ctx.signal,
-        factor_coverage=ctx.factor_coverage,
-        factor_active=ctx.factor_active,
-        factor_usable=ctx.factor_usable,
-        cross_validation=ctx.cross_validation,
         sleeve_max=limits.max_position,
         config=ctx.config,
     )
@@ -588,7 +578,8 @@ def _finish_entry(ctx: EntryContext, blocks: list[str]) -> PolicyVerdict:
             chain = ["入场未达开仓条件"]
     eligible = action == Action.BUY
     if eligible:
-        reasons = [r for r in chain if "QUALITY_SCALE" in r]
+        suggested = _apply_rich_pe_haircut(ctx, suggested, chain)
+        reasons = [r for r in chain if "QUALITY_SCALE" in r or "估值分位" in r]
     else:
         reasons = chain
     return PolicyVerdict(
@@ -601,6 +592,21 @@ def _finish_entry(ctx: EntryContext, blocks: list[str]) -> PolicyVerdict:
         suggested_position=suggested if action == Action.BUY else 0.0,
         rule_resolved=action == Action.WAIT and not eligible,
     )
+
+
+def _apply_rich_pe_haircut(
+    ctx: EntryContext, suggested: float, chain: list[str]
+) -> float:
+    """高估只缩仓。不把股票送进另一套开仓条件。"""
+    if not ctx.pe_reliable:
+        return suggested
+    if ctx.pe_percentile < ctx.config.core_pe_block_percentile:
+        return suggested
+    chain.append(
+        f"估值分位{ctx.pe_percentile:.0%}≥{ctx.config.core_pe_block_percentile:.0%}"
+        f"，仓位×{_RICH_PE_ENTRY_SCALE:.2f}"
+    )
+    return suggested * _RICH_PE_ENTRY_SCALE
 
 
 # ---------------------------------------------------------------------------
@@ -634,6 +640,15 @@ class CorePlaybook:
                 limits,
                 True,
             )
+        if ctx.signal_sell_pressure > 0:
+            return _hold_verdict(
+                ctx.sleeve,
+                Action.REDUCE,
+                ["63日收益已为负，不受最短持有限制"],
+                pressure,
+                limits,
+                True,
+            )
         pnl = _unrealized_pnl_pct(ctx.position, ctx.current_price)
         sentiment = ctx.analyst.sentiment_score if ctx.analyst else 0.0
         if pnl < -0.10 and ctx.analyst and sentiment < -0.2:
@@ -655,20 +670,6 @@ class CorePlaybook:
         if tp is not None:
             return _hold_verdict(
                 ctx.sleeve, tp.action, tp.reasons, tp.pressure, limits, True
-            )
-        if (
-            ctx.signal_sell_pressure >= ctx.config.signal_threshold_moderate
-            and pnl > 0
-        ):
-            return _hold_verdict(
-                ctx.sleeve,
-                Action.REDUCE,
-                [
-                    f"止盈压力:L3卖出机会强度{ctx.signal_sell_pressure:.2f}，软兑现减仓"
-                ],
-                max(pressure, ctx.signal_sell_pressure),
-                limits,
-                True,
             )
         if ctx.holding_days < ctx.config.core_min_hold_days:
             return _hold_verdict(
@@ -698,18 +699,7 @@ class ThemeSwingPlaybook:
     """高估 + 主题/故事动能短持。"""
 
     def decide_entry(self, ctx: EntryContext) -> PolicyVerdict:
-        blocks = _entry_micro_or_budget_blocks(ctx)
-        # 叙事动能：情绪或机会；禁止「低估定投」叙事开仓（高估路由已保证）
-        if ctx.sentiment_composite < ctx.config.theme_min_sentiment:
-            sig_ok = (
-                ctx.signal is not None
-                and ctx.signal.direction == Action.BUY
-                and abs(float(ctx.signal.opportunity))
-                >= ctx.config.theme_min_signal_conf
-            )
-            if not sig_ok:
-                blocks.append("主题动能不足（情绪与机会均未达标）")
-        return _finish_entry(ctx, blocks)
+        return _finish_entry(ctx, _entry_micro_or_budget_blocks(ctx))
 
     def decide_hold(self, ctx: HoldContext) -> PolicyVerdict:
         early = _shared_alert_and_analyst_exits(ctx)
@@ -749,6 +739,15 @@ class ThemeSwingPlaybook:
                     f"持仓高点回撤 {dd:.0%} 超阈值 {exit_dd:.0%}"
                     f"（sleeve={ctx.sleeve.value}）"
                 ],
+                pressure,
+                limits,
+                True,
+            )
+        if ctx.signal_sell_pressure > 0:
+            return _hold_verdict(
+                ctx.sleeve,
+                Action.REDUCE,
+                ["63日收益已为负，主题仓同样减仓"],
                 pressure,
                 limits,
                 True,
@@ -816,18 +815,12 @@ class EtfBetaPlaybook:
             return _hold_verdict(
                 ctx.sleeve, tp.action, tp.reasons, tp.pressure, limits, True
             )
-        pnl = _unrealized_pnl_pct(ctx.position, ctx.current_price)
-        if (
-            ctx.signal_sell_pressure >= ctx.config.signal_threshold_moderate
-            and pnl > 0
-        ):
+        if ctx.signal_sell_pressure > 0:
             return _hold_verdict(
                 ctx.sleeve,
                 Action.REDUCE,
-                [
-                    f"ETF卖出机会强度{ctx.signal_sell_pressure:.2f}，再平衡减仓"
-                ],
-                max(pressure, ctx.signal_sell_pressure),
+                ["63日收益已为负，再平衡减仓"],
+                pressure,
                 limits,
                 True,
             )

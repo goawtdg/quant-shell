@@ -1,11 +1,12 @@
 """东财业绩报表 — ROE / 行业；磁盘优先，选股前预热一次。"""
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 
 import pandas as pd
 
-from quant_shell.common.exceptions import DataFetchError
+from quant_shell.common.exceptions import DataFetchError, ValidationError
 from quant_shell.common.http_session import create_http_session
 from quant_shell.common.logging_config import get_logger
 from quant_shell.data.akshare_client import _run_fetch
@@ -77,6 +78,15 @@ def _fetch_pages(report_date: str) -> pd.DataFrame:
     big = pd.concat(chunks, ignore_index=True)
     if "SECURITY_CODE" not in big.columns or "WEIGHTAVG_ROE" not in big.columns:
         return pd.DataFrame()
+    notice_col = next(
+        (col for col in ("NOTICE_DATE", "ANN_DATE", "DECLAREDATE") if col in big.columns),
+        None,
+    )
+    if notice_col is None:
+        raise ValidationError(
+            message="业绩表缺少公告日",
+            suggestion="东财列里需要 NOTICE_DATE / ANN_DATE / DECLAREDATE",
+        )
     industry = big["PUBLISHNAME"] if "PUBLISHNAME" in big.columns else None
     if industry is None and "BOARD_NAME" in big.columns:
         industry = big["BOARD_NAME"]
@@ -88,40 +98,76 @@ def _fetch_pages(report_date: str) -> pd.DataFrame:
             else "",
             "净资产收益率": pd.to_numeric(big["WEIGHTAVG_ROE"], errors="coerce"),
             "所处行业": industry.fillna("").astype(str) if industry is not None else "",
+            "公告日": pd.to_datetime(big[notice_col], errors="coerce"),
+            "报告期": report_date,
         }
     ).reset_index(drop=True)
 
 
+def _usable_yjbb(frame: object) -> bool:
+    return (
+        isinstance(frame, pd.DataFrame)
+        and not frame.empty
+        and {"股票代码", "净资产收益率", "公告日"}.issubset(frame.columns)
+    )
+
+
+def _load_one_report(report_date: str) -> pd.DataFrame:
+    disk = load_any(_disk_path(report_date))
+    if _usable_yjbb(disk):
+        logger.info("yjbb disk_hit date=%s rows=%d", report_date, len(disk))
+        return disk
+    frame = _run_fetch("stock_yjbb_em", lambda d=report_date: _fetch_pages(d))
+    if frame.empty:
+        return frame
+    if not _usable_yjbb(frame):
+        raise ValidationError(
+            message=f"业绩表 {report_date} 缺少代码、ROE 或公告日",
+            suggestion="不要使用没有公告日的缓存",
+        )
+    save_any(_disk_path(report_date), frame)
+    logger.info("yjbb fetched date=%s rows=%d", report_date, len(frame))
+    return frame
+
+
 @lru_cache(maxsize=1)
-def fetch_yjbb_frame() -> pd.DataFrame:
-    """最近一期业绩报表（ROE、行业）；磁盘命中则跳过网络。"""
-    for report_date in _REPORT_DATES:
-        disk = load_any(_disk_path(report_date))
-        if (
-            isinstance(disk, pd.DataFrame)
-            and not disk.empty
-            and "股票代码" in disk.columns
-            and "净资产收益率" in disk.columns
-        ):
-            logger.info("fetch_yjbb_frame disk_hit date=%s rows=%d", report_date, len(disk))
-            return disk
-        try:
-            frame = _run_fetch(
-                "stock_yjbb_em",
-                lambda d=report_date: _fetch_pages(d),
-            )
-        except DataFetchError:
-            continue
-        if (
-            not frame.empty
-            and "股票代码" in frame.columns
-            and "净资产收益率" in frame.columns
-        ):
-            save_any(_disk_path(report_date), frame)
-            logger.info("fetch_yjbb_frame date=%s rows=%d", report_date, len(frame))
-            return frame
-    logger.warning("fetch_yjbb_frame no data hint=%s", NETWORK_HINT)
-    return pd.DataFrame()
+def _yjbb_history() -> pd.DataFrame:
+    """全部报告期。某一期网络失败直接抛出，不用更旧的一期冒充。"""
+    frames = [_load_one_report(report_date) for report_date in _REPORT_DATES]
+    frames = [frame for frame in frames if not frame.empty]
+    if not frames:
+        raise DataFetchError(
+            message="业绩表没有任何报告期",
+            suggestion=NETWORK_HINT,
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def latest_announced(history: pd.DataFrame, asof: date) -> pd.DataFrame:
+    """每只股票保留公告日不晚于 asof 的最后一行。"""
+    if "公告日" not in history.columns:
+        raise ValidationError(
+            message="业绩表缺少公告日",
+            suggestion="重新拉取业绩表，旧缓存没有公告日",
+        )
+    table = history.copy()
+    table["公告日"] = pd.to_datetime(table["公告日"], errors="coerce")
+    if table["公告日"].isna().all():
+        raise ValidationError(
+            message="业绩表公告日无法解析",
+            suggestion="检查 NOTICE_DATE 的格式",
+        )
+    table = table.dropna(subset=["公告日"])
+    table = table.loc[table["公告日"].dt.date <= asof]
+    if table.empty:
+        return table
+    table = table.sort_values("公告日")
+    return table.groupby("股票代码", as_index=False).tail(1)
+
+
+def fetch_yjbb_frame(asof: date | None = None) -> pd.DataFrame:
+    """公告日不晚于 asof 的最新 ROE 与行业。"""
+    return latest_announced(_yjbb_history(), asof or date.today())
 
 
 def prefetch_yjbb_frame() -> pd.DataFrame:
@@ -129,17 +175,17 @@ def prefetch_yjbb_frame() -> pd.DataFrame:
     return fetch_yjbb_frame()
 
 
-def fetch_stock_roe(symbol: str) -> float:
-    """ROE；失败返回 0。"""
-    frame = fetch_yjbb_frame()
+def fetch_stock_roe(symbol: str, asof: date | None = None) -> float | None:
+    """已公告 ROE。没有不晚于 asof 的报告时返回 None。"""
+    frame = fetch_yjbb_frame(asof)
     if frame.empty:
-        return 0.0
+        return None
     matched = frame.loc[frame["股票代码"].astype(str).str.zfill(6) == symbol]
     if matched.empty:
-        return 0.0
+        return None
     roe_raw = pd.to_numeric(matched.iloc[0]["净资产收益率"], errors="coerce")
     if pd.isna(roe_raw):
-        return 0.0
+        return None
     roe_val = float(roe_raw)
     return roe_val / 100.0 if roe_val > 1.0 else roe_val
 

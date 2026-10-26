@@ -64,11 +64,10 @@ class HardRiskGate(RiskEngine):
         if action == Action.BUY.value:
             if not ctx.entry_eligible:
                 return False
-            # 单票 ATH 回撤不再硬拦；组合回撤 / 总仓 / 因子可用 / 入场资格 仍硬拦
+            # 因子失效只降权并缩小仓位，不再把整笔延续单硬拦成无法开仓。
             blocking = {
                 RiskViolation.PORTFOLIO_DRAWDOWN_BREACH,
                 RiskViolation.TOTAL_POSITION_LIMIT,
-                RiskViolation.FACTOR_HEALTH_CRITICAL,
                 RiskViolation.ENTRY_NOT_ELIGIBLE,
             }
             return not any(v in violations for v in blocking)
@@ -90,8 +89,6 @@ class HardRiskGate(RiskEngine):
             violations.append(RiskViolation.PORTFOLIO_DRAWDOWN_BREACH)
         if pack.risk_state.total_position_pct > settings.total_position_limit:
             violations.append(RiskViolation.TOTAL_POSITION_LIMIT)
-        if self._factor_health_critical(ctx):
-            violations.append(RiskViolation.FACTOR_HEALTH_CRITICAL)
         if (
             ctx.evaluation_mode == EvaluationMode.ENTRY.value
             and not ctx.entry_eligible
@@ -104,15 +101,6 @@ class HardRiskGate(RiskEngine):
         ):
             violations.append(RiskViolation.ADD_TO_POSITION_BLOCKED)
         return violations
-
-    def _factor_health_critical(self, ctx: PipelineContext) -> bool:
-        """可用因子过少时硬拦（禁用数量本身不拦截）。"""
-        if settings.paper_relax_factor_gate:
-            return False
-        fh = ctx.factor_health
-        if fh is None:
-            return False
-        return fh.usable_count < settings.factor_min_usable
 
     def _max_allowed_position(self, ctx: PipelineContext) -> float:
         """计算最大允许仓位（因子 YELLOW + 单票 DD 软降）。"""

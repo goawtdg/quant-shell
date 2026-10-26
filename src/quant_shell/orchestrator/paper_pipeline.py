@@ -5,7 +5,6 @@ from quant_shell.common import audit
 from quant_shell.execution.paper_engine import PaperTradingEngine
 from quant_shell.execution.portfolio import PaperPortfolioStore
 from quant_shell.factory import create_layer4_service, create_signal_generator, create_strategy_engine
-from quant_shell.factors.engine import AlphaFactorEngine
 from quant_shell.factors.registry import FactorRegistry
 from quant_shell.factors.state_store import load_registry
 from quant_shell.human.llm_gate import build_default_human_gate
@@ -48,10 +47,7 @@ class PaperTradingPipeline(TradingPipeline):
         store = portfolio_store or PaperPortfolioStore()
         etf_reg = etf_registry or load_registry(scope="etf")
         stock_reg = stock_registry or load_registry(scope="stock")
-        signal_gen = create_signal_generator(
-            etf_engine=AlphaFactorEngine(registry=etf_reg, scope="etf"),
-            stock_engine=AlphaFactorEngine(registry=stock_reg, scope="stock"),
-        )
+        signal_gen = create_signal_generator()
         enricher = RiskContextEnricher(
             etf_health_monitor=FactorHealthMonitor(etf_reg, scope="etf"),
             stock_health_monitor=FactorHealthMonitor(stock_reg, scope="stock"),

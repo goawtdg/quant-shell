@@ -128,9 +128,10 @@ def score_keyword_sentiment(text: str) -> float:
 def compute_sentiment_scores(items: list[IntelligenceItem], brief: IntelligenceBrief) -> dict[str, float]:
     """计算 L2 各子分数。
 
-    cross_validation：无印证组 = 0.5（中性未知）；有印证组则从 0.5 单调抬升。
-    fund_sentiment：暂无真实资金流源，固定 0 且不参与 composite。
-    social_buzz：并入 composite（权重 0.10）。
+    cross_validation：无印证组 = 0.5（中性未知）；有印证组则从 0.5 单调抬升。不进入 composite。
+    fund_sentiment：暂无真实资金流源，固定 0。
+    social_buzz：新闻条数，不进入 composite。
+    composite：词面正负，范围 [-1, 1]。
     """
     if not items:
         return {
@@ -151,11 +152,8 @@ def compute_sentiment_scores(items: list[IntelligenceItem], brief: IntelligenceB
         cross_val = 0.5
     else:
         cross_val = min(1.0, 0.5 + brief.corroboration_count / 6.0)
-    # nlp 0.30 + buzz 0.10 + cross 0.30 - policy 0.30；fund_sentiment 不参与
-    composite = max(
-        -1.0,
-        min(1.0, nlp * 0.30 + buzz * 0.10 + cross_val * 0.30 - policy_risk * 0.30),
-    )
+    # 方向只来自词面正负。条数、印证、政策标签留在各自字段，避免「新闻多」变成看多。
+    composite = max(-1.0, min(1.0, nlp))
     return {
         "nlp_score": nlp,
         "social_buzz": buzz,

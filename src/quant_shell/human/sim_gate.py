@@ -52,21 +52,14 @@ class SimHumanReviewGate(HumanReviewGate):
             )
 
         chain.append(
-            f"融合信号 {signal.direction.value}, "
-            f"strength={signal.strength.value}, opportunity={signal.opportunity:.2f}"
+            f"63日收益 {signal.opportunity:.2%}，方向 {signal.direction.value}"
         )
-        alpha = signal.components.get("alpha", 0.0)
-        math = signal.components.get("math", 0.0)
-        chain.append(f"因子分量 math={math:.2f} alpha={alpha:.2f}")
         unreliable = pe_unreliable_reason(pack.market)
         if unreliable:
             chain.append(unreliable)
             risk_flags.append("PE_UNRELIABLE")
 
         chain.append(_SIM_REASON_NARRATE)
-        if pack.factor_degraded_count > 0:
-            risk_flags.append(f"FACTOR_DEGRADED:{pack.factor_degraded_count}")
-            chain.append(f"因子降级 {pack.factor_degraded_count} 个，信号权重已下调")
 
         return AIDecision(
             action=Action.HOLD,
