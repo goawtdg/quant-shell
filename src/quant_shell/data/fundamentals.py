@@ -5,11 +5,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 
-from quant_shell.common.exceptions import DataFetchError, ValidationError
 from quant_shell.common.logging_config import get_logger
 from quant_shell.common.types import StockFundamentals
 from quant_shell.config.settings import settings
-from quant_shell.data.constants import MOMENTUM_3M_DAYS, VOLUME_MA_DAYS
+from quant_shell.data.constants import VOLUME_MA_DAYS
+from quant_shell.signals.trailing_return import trailing_return
 from quant_shell.data.stock_industry import (
     fetch_stock_industry,
     flush_industry_disk_cache,
@@ -26,35 +26,31 @@ def build_stock_fundamentals(
     symbol: str,
     *,
     skip_industry: bool = False,
-) -> StockFundamentals | None:
-    """构建单只股票基本面快照；失败返回 None。"""
-    try:
-        spot = fetch_stock_spot(symbol)
-        ohlcv = fetch_stock_daily_ohlcv(symbol)
-        close = ohlcv["close"]
-        volume = ohlcv["volume"]
-        price = float(spot["price"])
-        name = str(spot.get("name", ""))
-        metrics = enrich_ohlcv_metrics(symbol, name, ohlcv)
-        return StockFundamentals(
-            symbol=symbol,
-            name=name,
-            price=price,
-            market_cap=float(spot.get("market_cap", 0) or 0),
-            pe=float(spot.get("pe", 0) or 0),
-            roe=fetch_stock_roe(symbol),
-            volume=float(volume.iloc[-1]),
-            volume_ma20=float(volume.tail(VOLUME_MA_DAYS).mean()),
-            return_3m=_calc_return(close, MOMENTUM_3M_DAYS),
-            return_5d=float(metrics["return_5d"]),
-            return_10d=float(metrics["return_10d"]),
-            at_limit_up=bool(metrics["at_limit_up"]),
-            turnover_rate=float(spot.get("turnover_rate", 0) or 0),
-            industry="未知" if skip_industry else fetch_stock_industry(symbol),
-        )
-    except (DataFetchError, ValidationError, OSError, KeyError, TypeError, ValueError) as exc:
-        logger.warning("build_stock_fundamentals skip symbol=%s err=%s", symbol, exc)
-        return None
+) -> StockFundamentals:
+    """构建单只股票基本面快照。行情或收益算不出来时直接失败。"""
+    spot = fetch_stock_spot(symbol)
+    ohlcv = fetch_stock_daily_ohlcv(symbol)
+    close = ohlcv["close"]
+    volume = ohlcv["volume"]
+    price = float(spot["price"])
+    name = str(spot.get("name", ""))
+    metrics = enrich_ohlcv_metrics(symbol, name, ohlcv)
+    return StockFundamentals(
+        symbol=symbol,
+        name=name,
+        price=price,
+        market_cap=float(spot.get("market_cap", 0) or 0),
+        pe=float(spot.get("pe", 0) or 0),
+        roe=fetch_stock_roe(symbol),
+        volume=float(volume.iloc[-1]),
+        volume_ma20=float(volume.tail(VOLUME_MA_DAYS).mean()),
+        return_3m=trailing_return(close),
+        return_5d=float(metrics["return_5d"]),
+        return_10d=float(metrics["return_10d"]),
+        at_limit_up=bool(metrics["at_limit_up"]),
+        turnover_rate=float(spot.get("turnover_rate", 0) or 0),
+        industry="未知" if skip_industry else fetch_stock_industry(symbol),
+    )
 
 
 def build_universe_frame(
@@ -76,19 +72,15 @@ def build_universe_frame(
         skip_industry,
         workers,
     )
-    try:
-        prefetch_yjbb_frame()
-    except (DataFetchError, ValidationError, OSError) as exc:
-        logger.warning("prefetch_yjbb_frame failed: %s", exc)
+    prefetch_yjbb_frame()
 
     rows: list[dict[str, object]] = []
     done = 0
 
-    def _record(item: StockFundamentals | None) -> None:
+    def _record(item: StockFundamentals) -> None:
         nonlocal done
         done += 1
-        if item is not None:
-            rows.append(item.to_dict())
+        rows.append(item.to_dict())
         if done == 1 or done % 5 == 0 or done == len(subset):
             logger.info(
                 "build_universe_frame progress=%d/%d ok=%d",
@@ -116,10 +108,3 @@ def build_universe_frame(
     return pd.DataFrame(rows)
 
 
-def _calc_return(close: pd.Series, days: int) -> float:
-    if len(close) <= days:
-        return 0.0
-    base = float(close.iloc[-days - 1])
-    if base == 0:
-        return 0.0
-    return float(close.iloc[-1] / base - 1)

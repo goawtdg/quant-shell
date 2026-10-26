@@ -51,12 +51,19 @@ def tighten_action(
 ) -> Action:
     """硬码收紧政策动作。
 
-    MONITOR/INTEL → WAIT。
+    分析师 REDUCE、HUMAN_ONLY、黑天鹅：没持仓就保持原动作；已持仓则减仓。
     STRATEGY_DEGRADED：入场保留 BUY（仓位由 commit 软缩放）。
-    持仓 REDUCE：默认标的偏离；portfolio 模式用组合偏离；regime 门控时 bull 豁免 REDUCE。
+    持仓退化 REDUCE：默认标的偏离；portfolio 模式用组合偏离；regime 门控时 bull 豁免。
     """
-    if HardCode.MONITOR_CRITICAL in codes or HardCode.INTEL_REVIEW_HARD in codes:
-        return Action.WAIT
+    analyst_exit = bool(
+        codes & {HardCode.MONITOR_CRITICAL, HardCode.INTEL_REVIEW_HARD}
+    )
+    if analyst_exit:
+        if evaluation_mode == EvaluationMode.ENTRY.value or not has_position:
+            return action
+        if action in (Action.EXIT, Action.REDUCE, Action.SELL):
+            return action
+        return Action.REDUCE
     if evaluation_mode == EvaluationMode.ENTRY.value:
         return action
 

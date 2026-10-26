@@ -17,6 +17,7 @@ from quant_shell.execution.constants import (
     EXECUTION_STATUS_FILLED,
     EXECUTION_STATUS_SKIPPED,
     LOT_SIZE,
+    STAMP_DUTY_RATE,
 )
 from quant_shell.execution.mark_prices import mark_portfolio_prices
 from quant_shell.execution.portfolio import PaperPortfolioStore
@@ -66,6 +67,7 @@ class PaperTradingEngine(ExecutionEngine):
 
         commission_rate = settings.paper_commission_rate
         commission = 0.0
+        stamp_duty = 0.0
         if order.action == Action.BUY:
             gross = qty * price
             commission = gross * commission_rate
@@ -81,7 +83,8 @@ class PaperTradingEngine(ExecutionEngine):
                 return self._skipped(order, portfolio, "持仓不足", price)
             gross = qty * price
             commission = gross * commission_rate
-            portfolio.cash += gross - commission
+            stamp_duty = gross * STAMP_DUTY_RATE
+            portfolio.cash += gross - commission - stamp_duty
             self._apply_sell(portfolio, order.symbol, qty)
             message = f"模拟卖出 {qty:.0f} 股 @ {price:.4f}"
         else:
@@ -104,6 +107,7 @@ class PaperTradingEngine(ExecutionEngine):
             "quantity": qty,
             "fill_price": price,
             "commission": commission,
+            "stamp_duty": stamp_duty,
             "cash_after": portfolio.cash,
             "equity": snap.equity,
             "reason": order.reason,

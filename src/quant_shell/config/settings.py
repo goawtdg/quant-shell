@@ -121,7 +121,7 @@ class Settings:
     take_profit_pe_rich: float = 0.70
     take_profit_pe_exit: float = 0.85
 
-    # L3/L7 信号门槛（运行时以 settings 为准；constants 仅作默认值）
+    # 开仓线是 63 日收益率：0.07 表示过去 63 个交易日上涨 7%
     signal_threshold_moderate: float = 0.07
     signal_threshold_strong: float = 0.10
     signal_moderate_buy_scale: float = 0.5
@@ -142,18 +142,17 @@ class Settings:
     # True：DEGRADED 持仓 REDUCE 仅 range/bear；bull 豁免（P4.hold_semantic_B）
     strategy_degraded_hold_regime_gated: bool = False
 
-    # L3 融合权重（默认与 constants 一致；消融经 env 覆盖）
+    # 旧融合权重。63 日收益不读取这些数。
     signal_weight_math: float = 0.40
     signal_weight_sentiment: float = 0.35
     signal_weight_intelligence: float = 0.25
     tech_weight_in_math: float = 0.45
     alpha_weight_in_math: float = 0.55
-    # True：没有方向的情绪不占权重。印证次数本身不进入 opportunity。
     fusion_renormalize_inactive: bool = True
 
-    # 保留旧环境变量。入场不再因可用因子过少硬拦，失效因子只退出打分并缩小仓位。
+    # 入场不因可用因子过少而拒绝开仓。
     paper_relax_factor_gate: bool = False
-    # 模拟盘：一般 human_review（非黑天鹅/HUMAN_ONLY）不硬拦 BUY
+    # 一般 human_review 不硬拦。黑天鹅和 HUMAN_ONLY 只减已有持仓。
     paper_relax_intel_review: bool = True
 
     # 网络（可选，AkShare / 情报源走 requests Session）

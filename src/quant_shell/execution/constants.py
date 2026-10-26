@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Final
 
 LOT_SIZE: Final[int] = 100
+# A 股卖出印花税，2023-08-28 起为万五。买入不收。
+STAMP_DUTY_RATE: Final[float] = 0.0005
 
 PAPER_DATA_DIR: Final[Path] = Path("data/paper")
 PORTFOLIO_FILENAME: Final[str] = "portfolio.json"

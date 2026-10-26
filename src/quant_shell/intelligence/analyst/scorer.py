@@ -8,9 +8,6 @@ from quant_shell.intelligence.analyst.constants import (
     RULE_WEIGHT_IN_BLEND,
 )
 
-_HARD_DAMPEN_ACTIONS = frozenset({"HUMAN_ONLY", "REDUCE"})
-
-
 def blend_sentiment_scores(
     rule_scores: dict[str, float],
     report: AnalystReport,
@@ -18,9 +15,8 @@ def blend_sentiment_scores(
 ) -> dict[str, float]:
     """融合规则情绪分与分析师输出（带权重上限）。
 
-    分析师 sentiment 始终按 confidence 加权进入语言分，不再因低置信整段丢弃。
-    仅硬拦类（黑天鹅 / HUMAN_ONLY / REDUCE）半折 composite；普通 human_review 不暗折。
-    印证、热度、政策风险不进入 composite。fund_sentiment 无真实源，固定 0。
+    分析师 sentiment 按 confidence 进入语言分。
+    印证、热度、政策风险和推荐动作不改 composite。fund_sentiment 无真实源，固定 0。
     """
     rule_cross = rule_scores["cross_validation"]
     analyst_cross = min(1.0, report.confidence * (1.0 + brief.corroboration_count / 5.0))
@@ -40,8 +36,6 @@ def blend_sentiment_scores(
     buzz = rule_scores["social_buzz"]
 
     composite = _build_composite(nlp, cross_val, policy_risk, buzz, report)
-    if _should_halve_composite(report):
-        composite *= 0.5
 
     return {
         "nlp_score": max(-1.0, min(1.0, nlp)),
@@ -60,21 +54,9 @@ def _build_composite(
     buzz: float,
     report: AnalystReport,
 ) -> float:
-    """方向只保留有符号的语言分。印证、热度和政策风险不把分数往上推。"""
-    del cross_val, policy_risk, buzz
-    base = nlp
-    if report.recommended_action == "REDUCE":
-        base = min(base, -0.05)
-    return _cap_abs(base, MAX_ANALYST_SENTIMENT_ABS)
-
-
-def _should_halve_composite(report: AnalystReport) -> bool:
-    """仅硬拦类半折；普通 human_review / MONITOR 保持原生分数。"""
-    novelty = (report.novelty or "").lower()
-    action = (report.recommended_action or "").upper()
-    if novelty == "black_swan":
-        return True
-    return action in _HARD_DAMPEN_ACTIONS
+    """方向只保留有符号的语言分。动作标记不改这个数。"""
+    del cross_val, policy_risk, buzz, report
+    return _cap_abs(nlp, MAX_ANALYST_SENTIMENT_ABS)
 
 
 def _cap_abs(value: float, limit: float) -> float:

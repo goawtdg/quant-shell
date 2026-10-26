@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from quant_shell.common.exceptions import ValidationError
 from quant_shell.data.stock_metrics import is_at_limit_down, is_at_limit_up
 from quant_shell.data.symbol import is_etf
 
@@ -39,3 +40,27 @@ def can_sell(
     close = float(row["close"])
     low = float(row["low"])
     return not is_at_limit_down(symbol, name, close, prev_close, low)
+
+
+def count_untradable(symbol: str, bars: pd.DataFrame, *, name: str = "") -> int:
+    """涨停买不进或跌停卖不出的交易日数。首日没有昨收，不计入。"""
+    required = {"close", "high", "low"}
+    missing = required.difference(bars.columns)
+    if missing:
+        raise ValidationError(
+            message=f"日 K 缺少 {', '.join(sorted(missing))}",
+            suggestion="统计涨跌停需要 close、high、low",
+        )
+    blocked = 0
+    prev_close: float | None = None
+    for _, row in bars.iterrows():
+        close = float(row["close"])
+        if prev_close is None:
+            prev_close = close
+            continue
+        buy_ok = can_buy(symbol, row, prev_close, name=name)
+        sell_ok = can_sell(symbol, row, prev_close, name=name)
+        if not buy_ok or not sell_ok:
+            blocked += 1
+        prev_close = close
+    return blocked
