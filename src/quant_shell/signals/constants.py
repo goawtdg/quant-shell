@@ -29,7 +29,8 @@ MATH_WEIGHT_MACD: Final[float] = 0.25
 MATH_WEIGHT_RSI: Final[float] = 0.25
 MATH_WEIGHT_BOLLINGER: Final[float] = 0.20
 
-# 三层信号融合（数学 / 情绪 / 情报）
+# 历史默认权重。运行时以 settings 为准。
+# 印证次数不再进入 opportunity，SIGNAL_WEIGHT_INTELLIGENCE 只保留给旧配置读取。
 SIGNAL_WEIGHT_MATH: Final[float] = 0.40
 SIGNAL_WEIGHT_SENTIMENT: Final[float] = 0.35
 SIGNAL_WEIGHT_INTELLIGENCE: Final[float] = 0.25

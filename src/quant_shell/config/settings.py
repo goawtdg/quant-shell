@@ -148,10 +148,10 @@ class Settings:
     signal_weight_intelligence: float = 0.25
     tech_weight_in_math: float = 0.45
     alpha_weight_in_math: float = 0.55
-    # True：sentiment/intel 绝对值均 < eps 时，将剩余权重量归一到 math（intel_off 检验）
-    fusion_renormalize_inactive: bool = False
+    # True：没有方向的情绪不占权重。印证次数本身不进入 opportunity。
+    fusion_renormalize_inactive: bool = True
 
-    # 因子双轨 IC（registry 仅由 validate_* --apply 写入）
+    # 保留旧环境变量。入场不再因可用因子过少硬拦，失效因子只退出打分并缩小仓位。
     paper_relax_factor_gate: bool = False
     # 模拟盘：一般 human_review（非黑天鹅/HUMAN_ONLY）不硬拦 BUY
     paper_relax_intel_review: bool = True
@@ -274,7 +274,7 @@ def load_settings() -> Settings:
         signal_weight_intelligence=_env_float("SIGNAL_WEIGHT_INTELLIGENCE", 0.25),
         tech_weight_in_math=_env_float("TECH_WEIGHT_IN_MATH", 0.45),
         alpha_weight_in_math=_env_float("ALPHA_WEIGHT_IN_MATH", 0.55),
-        fusion_renormalize_inactive=_env_bool("FUSION_RENORMALIZE_INACTIVE", False),
+        fusion_renormalize_inactive=_env_bool("FUSION_RENORMALIZE_INACTIVE", True),
         paper_relax_factor_gate=_env_bool("PAPER_RELAX_FACTOR_GATE", False),
         paper_relax_intel_review=_env_bool("PAPER_RELAX_INTEL_REVIEW", True),
         disable_proxy=_env_bool("DISABLE_PROXY", False),

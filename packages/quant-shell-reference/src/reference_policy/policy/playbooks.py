@@ -14,6 +14,9 @@ from reference_policy.constants import (
     MAX_RETURN_5D_ENTRY,
     MAX_RETURN_10D_ENTRY,
 )
+
+# 高估不再改道。同一延续假设下，估值只把仓位打到这个比例。
+_RICH_PE_ENTRY_SCALE = 0.5
 from reference_policy.drawdown_threshold import compute_hold_exit_drawdown_limit
 from reference_policy.policy.config import SleevePolicyConfig
 from reference_policy.policy.router import classify_sleeve, compute_catalyst_ok
@@ -588,7 +591,8 @@ def _finish_entry(ctx: EntryContext, blocks: list[str]) -> PolicyVerdict:
             chain = ["入场未达开仓条件"]
     eligible = action == Action.BUY
     if eligible:
-        reasons = [r for r in chain if "QUALITY_SCALE" in r]
+        suggested = _apply_rich_pe_haircut(ctx, suggested, chain)
+        reasons = [r for r in chain if "QUALITY_SCALE" in r or "估值分位" in r]
     else:
         reasons = chain
     return PolicyVerdict(
@@ -601,6 +605,21 @@ def _finish_entry(ctx: EntryContext, blocks: list[str]) -> PolicyVerdict:
         suggested_position=suggested if action == Action.BUY else 0.0,
         rule_resolved=action == Action.WAIT and not eligible,
     )
+
+
+def _apply_rich_pe_haircut(
+    ctx: EntryContext, suggested: float, chain: list[str]
+) -> float:
+    """高估只缩仓。不把股票送进另一套开仓条件。"""
+    if not ctx.pe_reliable:
+        return suggested
+    if ctx.pe_percentile < ctx.config.core_pe_block_percentile:
+        return suggested
+    chain.append(
+        f"估值分位{ctx.pe_percentile:.0%}≥{ctx.config.core_pe_block_percentile:.0%}"
+        f"，仓位×{_RICH_PE_ENTRY_SCALE:.2f}"
+    )
+    return suggested * _RICH_PE_ENTRY_SCALE
 
 
 # ---------------------------------------------------------------------------

@@ -18,9 +18,9 @@ def blend_sentiment_scores(
 ) -> dict[str, float]:
     """融合规则情绪分与分析师输出（带权重上限）。
 
-    分析师 sentiment 始终按 confidence 加权进入，不再因低置信整段丢弃。
+    分析师 sentiment 始终按 confidence 加权进入语言分，不再因低置信整段丢弃。
     仅硬拦类（黑天鹅 / HUMAN_ONLY / REDUCE）半折 composite；普通 human_review 不暗折。
-    fund_sentiment 无真实源，固定 0 且不参与 composite。
+    印证、热度、政策风险不进入 composite。fund_sentiment 无真实源，固定 0。
     """
     rule_cross = rule_scores["cross_validation"]
     analyst_cross = min(1.0, report.confidence * (1.0 + brief.corroboration_count / 5.0))
@@ -60,12 +60,11 @@ def _build_composite(
     buzz: float,
     report: AnalystReport,
 ) -> float:
-    """合成 composite（含 social_buzz；不含 fund_sentiment）。"""
-    base = nlp * 0.40 + cross_val * 0.30 + buzz * 0.10 - policy_risk * 0.20
+    """方向只保留有符号的语言分。印证、热度和政策风险不把分数往上推。"""
+    del cross_val, policy_risk, buzz
+    base = nlp
     if report.recommended_action == "REDUCE":
         base = min(base, -0.05)
-    if report.recommended_action == "INCREASE":
-        base = max(base, 0.15)
     return _cap_abs(base, MAX_ANALYST_SENTIMENT_ABS)
 
 

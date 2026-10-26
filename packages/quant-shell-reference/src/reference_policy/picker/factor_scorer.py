@@ -11,7 +11,7 @@ from quant_shell.common.types import ScoredStock, StockPickResult
 from quant_shell.data.stock_client import fetch_stock_daily_ohlcv
 from quant_shell.signals.adapter import cross_section_adapt_dataframe
 from quant_shell.factors.batch import compute_alpha_raws
-from quant_shell.factors.registry import FactorRegistry
+from quant_shell.factors.registry import FactorCategory, FactorRegistry
 from quant_shell.factors.state_store import load_registry
 from reference_policy.picker.constants import (
     STRATEGY_MULTI_FACTOR,
@@ -47,7 +47,7 @@ INVERT_COLS: set[str] = set()
 
 
 class FactorScorer:
-    """截面 rank 多因子合成打分。"""
+    """截面排名。排序只用动量；价值、质量和换手仍写入 factor_scores，不参与名次。"""
 
     def __init__(self, registry: FactorRegistry | None = None) -> None:
         self._registry = registry or load_registry(scope="stock")
@@ -84,7 +84,8 @@ class FactorScorer:
 
         alpha_frame = self._build_alpha_frame(filtered["symbol"].tolist())
         fund_frame = self._build_fundamental_frame(filtered)
-        combined = pd.concat([alpha_frame, fund_frame], axis=1).fillna(0.0)
+        # 缺失留到排名时剔除；排名后再填 0，0 表示中性而不是「因子值恰好为 0」。
+        combined = pd.concat([alpha_frame, fund_frame], axis=1)
         industry_map = self._industry_map(filtered)
         adapted = cross_section_adapt_dataframe(
             combined,
@@ -94,15 +95,7 @@ class FactorScorer:
         )
 
         alpha_cols = [c for c in alpha_frame.columns if c in adapted.columns]
-        fund_cols = [c for c in FUNDAMENTAL_COLS if c in adapted.columns]
-
-        alpha_composite = self._weighted_row_mean(adapted[alpha_cols], self._alpha_weights(alpha_cols))
-        fund_composite = self._weighted_row_mean(adapted[fund_cols], FUNDAMENTAL_WEIGHTS)
-
-        total = (
-            WEIGHT_ALPHA_FACTORS * alpha_composite
-            + WEIGHT_FUNDAMENTAL * fund_composite
-        )
+        total = self._continuation_total(adapted, alpha_cols)
         ranking = total.sort_values(ascending=False).head(top_n)
 
         picks: list[ScoredStock] = []
@@ -197,6 +190,41 @@ class FactorScorer:
             for _, row in frame.iterrows()
             if str(row.get("industry", "")).strip()
         }
+
+    def _continuation_total(self, adapted: pd.DataFrame, alpha_cols: list[str]) -> pd.Series:
+        """动量 alpha 与中期动量的加权截面分。缺哪一条，哪一条不占权重。"""
+        spec_map = {spec.name: spec for spec in self._registry.all_specs()}
+        momentum_alpha = [
+            col
+            for col in alpha_cols
+            if spec_map.get(col) is not None
+            and spec_map[col].category == FactorCategory.MOMENTUM
+        ]
+        mom_fund = [
+            col
+            for col in ("momentum_3m", "industry_rel_momentum")
+            if col in adapted.columns
+        ]
+        parts: list[pd.Series] = []
+        weights: list[float] = []
+        if momentum_alpha:
+            parts.append(
+                self._weighted_row_mean(
+                    adapted[momentum_alpha], self._alpha_weights(momentum_alpha)
+                )
+            )
+            weights.append(WEIGHT_ALPHA_FACTORS)
+        if mom_fund:
+            fund_w = {col: FUNDAMENTAL_WEIGHTS[col] for col in mom_fund}
+            parts.append(self._weighted_row_mean(adapted[mom_fund], fund_w))
+            weights.append(WEIGHT_FUNDAMENTAL)
+        if not parts:
+            return pd.Series(0.0, index=adapted.index)
+        weight_sum = sum(weights)
+        total = pd.Series(0.0, index=adapted.index)
+        for part, weight in zip(parts, weights):
+            total = total.add(part * (weight / weight_sum), fill_value=0.0)
+        return total
 
     def _alpha_weights(self, columns: list[str]) -> dict[str, float]:
         """从注册表取 alpha 列有效权重（含 DEGRADED 半权）。"""
