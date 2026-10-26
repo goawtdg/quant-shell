@@ -15,7 +15,6 @@ class ThresholdProfile:
     signal_threshold_moderate: float | None = None
     signal_threshold_strong: float | None = None
     signal_moderate_buy_scale: float | None = None
-    factor_min_coverage: float | None = None
 
 
 @dataclass(frozen=True)

@@ -302,9 +302,6 @@ class EntryContext:
     pe_reliable: bool
     sentiment_composite: float
     signal: TradingSignal | None
-    factor_coverage: float
-    factor_active: int
-    factor_usable: int
     theme_sleeve_exposure: float
     microstructure_extra: dict[str, object]
     cross_validation: float
@@ -338,9 +335,6 @@ def decide_entry(
     pe_reliable: bool,
     sentiment_composite: float,
     signal: TradingSignal | None,
-    factor_coverage: float,
-    factor_active: int,
-    factor_usable: int,
     theme_sleeve_exposure: float,
     microstructure_extra: dict[str, object] | None,
     config: SleevePolicyConfig,
@@ -388,9 +382,6 @@ def decide_entry(
         pe_reliable=pe_reliable,
         sentiment_composite=sentiment_composite,
         signal=signal,
-        factor_coverage=factor_coverage,
-        factor_active=factor_active,
-        factor_usable=factor_usable,
         theme_sleeve_exposure=theme_sleeve_exposure,
         microstructure_extra=dict(microstructure_extra or {"symbol": symbol}),
         cross_validation=cross_validation,

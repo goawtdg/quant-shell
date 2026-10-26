@@ -83,12 +83,6 @@ class Settings:
     # 全链路联动
     linkage_stock_top_n: int = 5
     linkage_reeval_holdings: bool = True
-    # 因子健康画像：按可用质量门控（非禁用个数）
-    factor_min_usable: int = 4
-    factor_min_active: int = 3
-    factor_green_min_usable: int = 6
-    factor_min_coverage: float = 0.70
-    factor_coverage_scale_floor: float = 0.35
     intel_cache_max_age_min: int = 120
     linkage_intel_prefetch_stocks: bool = True
     linkage_skip_industry_fetch: bool = False
@@ -97,8 +91,6 @@ class Settings:
     pick_max_symbols: int = 0
     # 选股/入场剔除创业板、科创板、北交所等有账户门槛标的
     pick_filter_board_permission: bool = True
-    # 仅影响 L3 均线周期 profile，不参与开平仓路由
-    investment_mode: str = "long_term"
 
     # 策略袖套政策（L4 policy 唯一读取）
     core_pe_block_percentile: float = 0.85
@@ -111,9 +103,7 @@ class Settings:
     theme_min_sentiment: float = 0.25
     theme_min_signal_conf: float = 0.45
 
-    # 估值体制 blend（L3）与止盈（L4）
-    pe_undervalue_blend: float = 0.35
-    pe_overvalue_blend: float = 0.65
+    # 止盈（L4）
     take_profit_partial_pct: float = 0.12
     take_profit_scale_pct: float = 0.25
     take_profit_full_pct: float = 0.40
@@ -142,16 +132,6 @@ class Settings:
     # True：DEGRADED 持仓 REDUCE 仅 range/bear；bull 豁免（P4.hold_semantic_B）
     strategy_degraded_hold_regime_gated: bool = False
 
-    # 旧融合权重。63 日收益不读取这些数。
-    signal_weight_math: float = 0.40
-    signal_weight_sentiment: float = 0.35
-    signal_weight_intelligence: float = 0.25
-    tech_weight_in_math: float = 0.45
-    alpha_weight_in_math: float = 0.55
-    fusion_renormalize_inactive: bool = True
-
-    # 入场不因可用因子过少而拒绝开仓。
-    paper_relax_factor_gate: bool = False
     # 一般 human_review 不硬拦。黑天鹅和 HUMAN_ONLY 只减已有持仓。
     paper_relax_intel_review: bool = True
 
@@ -211,11 +191,6 @@ def load_settings() -> Settings:
         hold_skip_llm_if_rule_resolved=_env_bool("HOLD_SKIP_LLM_IF_RULE_RESOLVED", True),
         linkage_stock_top_n=_env_int("LINKAGE_STOCK_TOP_N", 5),
         linkage_reeval_holdings=_env_bool("LINKAGE_REEVAL_HOLDINGS", True),
-        factor_min_usable=_env_int("FACTOR_MIN_USABLE", 4),
-        factor_min_active=_env_int("FACTOR_MIN_ACTIVE", 3),
-        factor_green_min_usable=_env_int("FACTOR_GREEN_MIN_USABLE", 6),
-        factor_min_coverage=_env_float("FACTOR_MIN_COVERAGE", 0.70),
-        factor_coverage_scale_floor=_env_float("FACTOR_COVERAGE_SCALE_FLOOR", 0.35),
         intel_cache_max_age_min=_env_int("INTEL_CACHE_MAX_AGE_MIN", 120),
         linkage_intel_prefetch_stocks=_env_bool("LINKAGE_INTEL_PREFETCH_STOCKS", True),
         linkage_skip_industry_fetch=_env_bool("LINKAGE_SKIP_INDUSTRY_FETCH", False),
@@ -223,7 +198,6 @@ def load_settings() -> Settings:
         pick_universe=_env_str("PICK_UNIVERSE", "csi300"),
         pick_max_symbols=_env_int("PICK_MAX_SYMBOLS", 0),
         pick_filter_board_permission=_env_bool("PICK_FILTER_BOARD_PERMISSION", True),
-        investment_mode=_env_str("INVESTMENT_MODE", "long_term"),
         core_pe_block_percentile=_env_float("CORE_PE_BLOCK_PERCENTILE", 0.85),
         core_min_hold_days=_env_int("CORE_MIN_HOLD_DAYS", 5),
         theme_swing_enabled=_env_bool("THEME_SWING_ENABLED", True),
@@ -233,8 +207,6 @@ def load_settings() -> Settings:
         theme_exit_dd=_env_float("THEME_EXIT_DD", 0.12),
         theme_min_sentiment=_env_float("THEME_MIN_SENTIMENT", 0.25),
         theme_min_signal_conf=_env_float("THEME_MIN_SIGNAL_CONF", 0.45),
-        pe_undervalue_blend=_env_float("PE_UNDERVALUE_BLEND", 0.35),
-        pe_overvalue_blend=_env_float("PE_OVERVALUE_BLEND", 0.65),
         take_profit_partial_pct=_env_float("TAKE_PROFIT_PARTIAL_PCT", 0.12),
         take_profit_scale_pct=_env_float("TAKE_PROFIT_SCALE_PCT", 0.25),
         take_profit_full_pct=_env_float("TAKE_PROFIT_FULL_PCT", 0.40),
@@ -268,13 +240,6 @@ def load_settings() -> Settings:
         strategy_degraded_hold_regime_gated=_env_bool(
             "STRATEGY_DEGRADED_HOLD_REGIME_GATED", False
         ),
-        signal_weight_math=_env_float("SIGNAL_WEIGHT_MATH", 0.40),
-        signal_weight_sentiment=_env_float("SIGNAL_WEIGHT_SENTIMENT", 0.35),
-        signal_weight_intelligence=_env_float("SIGNAL_WEIGHT_INTELLIGENCE", 0.25),
-        tech_weight_in_math=_env_float("TECH_WEIGHT_IN_MATH", 0.45),
-        alpha_weight_in_math=_env_float("ALPHA_WEIGHT_IN_MATH", 0.55),
-        fusion_renormalize_inactive=_env_bool("FUSION_RENORMALIZE_INACTIVE", True),
-        paper_relax_factor_gate=_env_bool("PAPER_RELAX_FACTOR_GATE", False),
         paper_relax_intel_review=_env_bool("PAPER_RELAX_INTEL_REVIEW", True),
         disable_proxy=_env_bool("DISABLE_PROXY", False),
         http_proxy=_env_str("HTTP_PROXY"),

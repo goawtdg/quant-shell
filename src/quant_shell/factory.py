@@ -73,7 +73,7 @@ def create_strategy_engine(
 
 
 def create_signal_generator(**kwargs: object):
-    """加载 L3 信号生成器；默认 SignalFusionGenerator + FACTOR_MODULE 因子。"""
+    """加载 L3 信号生成器。默认是 63 日收益率。"""
     from quant_shell.signals.fusion import SignalFusionGenerator
 
     spec = os.getenv("SIGNAL_MODULE", "").strip()

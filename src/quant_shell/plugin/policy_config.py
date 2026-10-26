@@ -23,7 +23,6 @@ class SleevePolicyConfig:
     signal_threshold_strong: float
     signal_moderate_buy_scale: float
     single_stock_limit: float
-    factor_min_coverage: float
     pick_filter_board_permission: bool
     take_profit_partial_pct: float
     take_profit_scale_pct: float
@@ -55,7 +54,6 @@ def load_policy_config(src: Settings | None = None) -> SleevePolicyConfig:
         signal_threshold_strong=s.signal_threshold_strong,
         signal_moderate_buy_scale=s.signal_moderate_buy_scale,
         single_stock_limit=s.single_stock_limit,
-        factor_min_coverage=s.factor_min_coverage,
         pick_filter_board_permission=s.pick_filter_board_permission,
         take_profit_partial_pct=s.take_profit_partial_pct,
         take_profit_scale_pct=s.take_profit_scale_pct,
