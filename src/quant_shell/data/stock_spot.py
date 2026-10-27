@@ -18,7 +18,9 @@ from quant_shell.data.constants import (
 from quant_shell.data.disk_cache import (
     CACHE_ROOT,
     load_frame_ttl,
+    load_json_record,
     save_frame_ttl,
+    save_json_record,
 )
 
 logger = get_logger(__name__)
@@ -177,9 +179,31 @@ def _quote_sina(symbol: str) -> dict[str, float | str]:
     return _run_fetch(f"stock_spot_quote_sina:{symbol}", _call)
 
 
-def fetch_stock_spot_quote(symbol: str) -> dict[str, float | str]:
-    """单票现价：东财 → 新浪。选股/盯市唯一热路径。"""
-    symbol = _require_symbol(symbol)
+def _spot_quote_disk(symbol: str):
+    return CACHE_ROOT / "spot" / f"{symbol}.json"
+
+
+def _quote_from_record(data: object, symbol: str) -> dict[str, float | str] | None:
+    if not isinstance(data, dict):
+        return None
+    try:
+        price = float(data.get("price") or 0)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0 or str(data.get("symbol") or "") != symbol:
+        return None
+    return {
+        "symbol": symbol,
+        "name": str(data.get("name") or ""),
+        "price": price,
+        "volume": float(data.get("volume") or 0),
+        "pe": float(data.get("pe") or 0),
+        "market_cap": float(data.get("market_cap") or 0),
+        "turnover_rate": float(data.get("turnover_rate") or 0),
+    }
+
+
+def _fetch_stock_spot_live(symbol: str) -> dict[str, float | str]:
     errors: list[str] = []
     for url in _QUOTE_URLS:
         try:
@@ -196,6 +220,29 @@ def fetch_stock_spot_quote(symbol: str) -> dict[str, float | str]:
             message=f"单票行情全部失败: {symbol} | {'; '.join(errors[:3])}",
             suggestion=NETWORK_HINT,
         ) from exc
+
+
+def fetch_stock_spot_quote(symbol: str) -> dict[str, float | str]:
+    """单票现价：新鲜磁盘样本优先，否则东财 → 新浪。网失败时回放上一份。"""
+    symbol = _require_symbol(symbol)
+    path = _spot_quote_disk(symbol)
+    fresh = _quote_from_record(load_json_record(path, _spot_ttl_sec()), symbol)
+    if fresh is not None:
+        logger.info("stock_spot_quote disk_fresh symbol=%s", symbol)
+        return fresh
+    try:
+        row = _fetch_stock_spot_live(symbol)
+    except DataFetchError as exc:
+        stale = _quote_from_record(
+            load_json_record(path, _spot_ttl_sec(), allow_stale=True),
+            symbol,
+        )
+        if stale is None:
+            raise
+        logger.warning("stock_spot_quote disk_stale symbol=%s err=%s", symbol, exc)
+        return stale
+    save_json_record(path, row)
+    return row
 
 
 def fetch_stock_spot(symbol: str) -> dict[str, float | str]:

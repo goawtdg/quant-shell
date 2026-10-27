@@ -11,6 +11,12 @@ from quant_shell.common.logging_config import get_logger
 from quant_shell.common.retry import call_with_retry
 from quant_shell.common.types import IntelligenceItem
 from quant_shell.intelligence.deduper import dedupe_items
+from quant_shell.intelligence.replay_store import (
+    global_path,
+    load_items,
+    save_items,
+    symbol_path,
+)
 from quant_shell.intelligence.sources import build_sources
 from quant_shell.intelligence.sources.base import IntelligenceSource
 from quant_shell.intelligence.tagger import tag_items
@@ -38,7 +44,7 @@ class IntelligenceCollector:
         self.source_failures: list[dict[str, str]] = []
 
     def collect_global(self) -> list[IntelligenceItem]:
-        """只采市场级源；结果写入会话缓存，同轮可复用。"""
+        """只采市场级源。新鲜磁盘样本优先；网失败时回放上一份。"""
         global _global_items_cache, _global_cache_mono
         with _global_cache_lock:
             if _global_items_cache is not None and self._global_cache_fresh():
@@ -48,11 +54,26 @@ class IntelligenceCollector:
                 )
                 return list(_global_items_cache)
 
+        fresh = load_items(global_path())
+        if fresh is not None:
+            self._remember_global(fresh)
+            logger.info("IntelligenceCollector global disk_fresh items=%d", len(fresh))
+            return list(fresh)
+
         global_sources = [s for s in self._sources if not s.is_symbol_scoped]
+        before = len(self.source_failures)
         items = self._finalize(self._fetch_many(global_sources, ""))
-        with _global_cache_lock:
-            _global_items_cache = list(items)
-            _global_cache_mono = time.monotonic()
+        if items:
+            save_items(global_path(), items)
+        elif len(self.source_failures) > before:
+            stale = load_items(global_path(), allow_stale=True)
+            if stale is not None:
+                logger.warning(
+                    "IntelligenceCollector global disk_stale items=%d",
+                    len(stale),
+                )
+                items = stale
+        self._remember_global(items)
         logger.info(
             "IntelligenceCollector global fetched sources=%d items=%d",
             len(global_sources),
@@ -61,11 +82,40 @@ class IntelligenceCollector:
         return list(items)
 
     def collect_symbol(self, symbol: str) -> list[IntelligenceItem]:
-        """只采依赖 symbol 的源（个股新闻）。"""
+        """只采依赖 symbol 的源（个股新闻）。新鲜样本优先，失败回放。"""
         if not symbol:
             return []
+        path = symbol_path(symbol)
+        fresh = load_items(path)
+        if fresh is not None:
+            logger.info(
+                "IntelligenceCollector symbol disk_fresh symbol=%s items=%d",
+                symbol,
+                len(fresh),
+            )
+            return fresh
         scoped = [s for s in self._sources if s.is_symbol_scoped]
-        return self._finalize(self._fetch_many(scoped, symbol))
+        before = len(self.source_failures)
+        items = self._finalize(self._fetch_many(scoped, symbol))
+        if items:
+            save_items(path, items)
+            return items
+        if len(self.source_failures) > before:
+            stale = load_items(path, allow_stale=True)
+            if stale is not None:
+                logger.warning(
+                    "IntelligenceCollector symbol disk_stale symbol=%s items=%d",
+                    symbol,
+                    len(stale),
+                )
+                return stale
+        return items
+
+    def _remember_global(self, items: list[IntelligenceItem]) -> None:
+        global _global_items_cache, _global_cache_mono
+        with _global_cache_lock:
+            _global_items_cache = list(items)
+            _global_cache_mono = time.monotonic()
 
     def collect_for_symbol(
         self,

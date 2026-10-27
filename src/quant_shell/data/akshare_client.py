@@ -21,6 +21,7 @@ from quant_shell.common.exceptions import (
 )
 from quant_shell.common.http_session import create_http_session
 from quant_shell.common.logging_config import get_logger
+from quant_shell.data.disk_cache import CACHE_ROOT, load_json_record, save_json_record
 from quant_shell.data.constants import (
     COL_CLOSE,
     COL_HIGH,
@@ -170,8 +171,27 @@ def _fetch_legulegu_pe_quantile(index_name: str) -> float:
     return float(quantile_series.iloc[-1])
 
 
+_PE_CACHE_TTL_SEC = 24 * 3600
+
+
+def _pe_disk(symbol: str):
+    return CACHE_ROOT / "pe" / f"{symbol}.json"
+
+
+def _pe_from_record(data: object) -> float | None:
+    if isinstance(data, bool) or not isinstance(data, (int, float)):
+        return None
+    value = float(data)
+    if value < 0 or value > 1:
+        return None
+    return value
+
+
 def fetch_index_pe_percentile(symbol: str) -> float:
-    """获取跟踪指数 PE 的历史分位（乐咕乐股 ttmPeQuantile）。"""
+    """获取跟踪指数 PE 的历史分位（乐咕乐股 ttmPeQuantile）。
+
+    24 小时内复用磁盘样本。乐咕不可达时回放上一份成功分位，避免模拟盘被内部接口卡死。
+    """
     index_name = SYMBOL_TO_INDEX_NAME.get(symbol)
     if index_name is None:
         raise ValidationError(
@@ -179,8 +199,27 @@ def fetch_index_pe_percentile(symbol: str) -> float:
             suggestion="在 layer1_data/constants.py SYMBOL_TO_INDEX_NAME 中添加映射",
         )
 
+    path = _pe_disk(symbol)
+    fresh = _pe_from_record(load_json_record(path, _PE_CACHE_TTL_SEC))
+    if fresh is not None:
+        logger.info("fetch_index_pe disk_fresh symbol=%s pe=%.4f", symbol, fresh)
+        return fresh
+
     logger.debug("fetch_index_pe symbol=%s index=%s", symbol, index_name)
-    percentile = _fetch_legulegu_pe_quantile(index_name)
+    try:
+        percentile = _fetch_legulegu_pe_quantile(index_name)
+    except DataFetchError as exc:
+        stale = _pe_from_record(load_json_record(path, _PE_CACHE_TTL_SEC, allow_stale=True))
+        if stale is None:
+            raise
+        logger.warning(
+            "fetch_index_pe disk_stale symbol=%s pe=%.4f err=%s",
+            symbol,
+            stale,
+            exc,
+        )
+        return stale
+    save_json_record(path, percentile)
     logger.debug("pe_percentile=%.4f", percentile)
     return percentile
 
